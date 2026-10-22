@@ -1,0 +1,49 @@
+name: scanner
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: scanner
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install requests
+
+      - name: Send Telegram test (manual runs only)
+        if: github.event_name == 'workflow_dispatch'
+        run: python memecoin_scanner.py --test-telegram
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+
+      - name: Scan
+        run: python memecoin_scanner.py --once
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          WALLETS: ${{ secrets.WALLETS }}
+          SOLANA_RPC: ${{ secrets.SOLANA_RPC }}
+          SCAN_PRESET: ${{ vars.SCAN_PRESET || 'balanced' }}
+
+      - name: Save state
+        run: |
+          git config user.name "scanner-bot"
+          git config user.email "scanner-bot@users.noreply.github.com"
+          git add state.json
+          git diff --cached --quiet || (git commit -m "update state" && git push)
